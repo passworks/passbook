@@ -65,20 +65,24 @@ module Passbook
     def get_p12_cert_and_key
       key_hash = {}
       if Passbook.p12_key
-        key_hash[:key] = OpenSSL::PKey::RSA.new File.read(Passbook.p12_key), Passbook.p12_password
-        key_hash[:cert] = OpenSSL::X509::Certificate.new File.read(Passbook.p12_certificate)
+        raw_key         = Passbook.p12_key.to_s         =~ /^-+BEGIN .+-+/ ? Passbook.p12_key         : File.read(Passbook.p12_key)
+        raw_cert        = Passbook.p12_certificate.to_s =~ /^-+BEGIN .+-+/ ? Passbook.p12_certificate : File.read(Passbook.p12_certificate)
+        key_hash[:key]  = OpenSSL::PKey::RSA.new raw_key, Passbook.p12_password
+        key_hash[:cert] = OpenSSL::X509::Certificate.new raw_cert
       else
-        p12 = OpenSSL::PKCS12.new File.read(Passbook.p12_cert), Passbook.p12_password
+        raw_p12 = Passbook.p12_cert =~ /^-+BEGIN .+-+/ ? Passbook.p12_cert : File.read(Passbook.p12_cert)
+        p12     = OpenSSL::PKCS12.new raw_p12, Passbook.p12_password
         key_hash[:key], key_hash[:cert] = p12.key, p12.certificate
       end
       key_hash
     end
 
     def createSignature manifest
-      p12   = get_p12_cert_and_key
-      wwdc  = OpenSSL::X509::Certificate.new File.read(Passbook.wwdc_cert)
-      pk7   = OpenSSL::PKCS7.sign p12[:cert], p12[:key], manifest.to_s, [wwdc], OpenSSL::PKCS7::BINARY | OpenSSL::PKCS7::DETACHED
-      data  = OpenSSL::PKCS7.write_smime pk7
+      p12      = get_p12_cert_and_key
+      raw_wwdc = Passbook.wwdc_cert.to_s =~ /^-+BEGIN .+-+/ ? Passbook.wwdc_cert : File.read(Passbook.wwdc_cert)
+      wwdc     = OpenSSL::X509::Certificate.new raw_wwdc
+      pk7      = OpenSSL::PKCS7.sign p12[:cert], p12[:key], manifest.to_s, [wwdc], OpenSSL::PKCS7::BINARY | OpenSSL::PKCS7::DETACHED
+      data     = OpenSSL::PKCS7.write_smime pk7
 
       str_debut = "filename=\"smime.p7s\"\n\n"
       data = data[data.index(str_debut)+str_debut.length..data.length-1]
